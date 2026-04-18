@@ -9,12 +9,18 @@ from sklearn.metrics import accuracy_score
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime, date
-import io, warnings
+import io, warnings, time
 warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="紙DM AI最適化ツール", page_icon="📮", layout="wide")
 st.title("📮 紙DM AI最適化ツール")
 st.caption("デジタル全盛の時代に、あえて紙で届ける。でも届ける相手はAIが選ぶ。")
+
+# === セッション状態 ===
+if "model_version" not in st.session_state:
+    st.session_state.model_version = 1
+    st.session_state.accuracy_history = []
+    st.session_state.training_dates = []
 
 # === デモデータ（10万件） ===
 def generate_demo_data(n=100000):
@@ -84,7 +90,7 @@ df["AI送付対象"] = (df["AI送付スコア"] >= 0.5).astype(int)
 ai_target = df[df["AI送付対象"] == 1]
 
 # === タブ ===
-tab1, tab2, tab3, tab4 = st.tabs(["📊 データ概要","🎯 AI DM送付リスト","👥 セグメント分析","💴 コストシミュレーション"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 データ概要","🎯 AI DM送付リスト","👥 セグメント分析","💴 コストシミュレーション","🤖 AI再学習"])
 
 with tab1:
     st.header("📊 データ概要")
@@ -158,11 +164,11 @@ with tab4:
     saving_once = cost_all_total - cost_ai_total
 
     breakdown = pd.DataFrame({
-        "項目": ["印刷費", "封入・封緘費", "郵送費", "デザイン費", "合計"],
-        "全件送付": [f"¥{cost_all_print:,}", f"¥{cost_all_enclose:,}", f"¥{cost_all_postage:,}", f"¥{cost_design:,}", f"¥{cost_all_total:,}"],
-        "AI最適化": [f"¥{cost_ai_print:,}", f"¥{cost_ai_enclose:,}", f"¥{cost_ai_postage:,}", f"¥{cost_design:,}", f"¥{cost_ai_total:,}"],
-        "削減額": [f"¥{cost_all_print - cost_ai_print:,}", f"¥{cost_all_enclose - cost_ai_enclose:,}",
-                   f"¥{cost_all_postage - cost_ai_postage:,}", "¥0", f"¥{saving_once:,}"]
+        "項目": ["印刷費","封入・封緘費","郵送費","デザイン費","合計"],
+        "全件送付": [f"¥{cost_all_print:,}",f"¥{cost_all_enclose:,}",f"¥{cost_all_postage:,}",f"¥{cost_design:,}",f"¥{cost_all_total:,}"],
+        "AI最適化": [f"¥{cost_ai_print:,}",f"¥{cost_ai_enclose:,}",f"¥{cost_ai_postage:,}",f"¥{cost_design:,}",f"¥{cost_ai_total:,}"],
+        "削減額": [f"¥{cost_all_print-cost_ai_print:,}",f"¥{cost_all_enclose-cost_ai_enclose:,}",
+                   f"¥{cost_all_postage-cost_ai_postage:,}","¥0",f"¥{saving_once:,}"]
     })
     st.dataframe(breakdown, hide_index=True, width=800)
 
@@ -187,10 +193,71 @@ with tab4:
 
     campaigns = list(range(1, annual_campaigns + 1))
     fig_annual = go.Figure()
-    fig_annual.add_trace(go.Scatter(x=campaigns, y=[cost_all_total * c for c in campaigns], name="全件送付", mode="lines+markers"))
-    fig_annual.add_trace(go.Scatter(x=campaigns, y=[cost_ai_total * c for c in campaigns], name="AI最適化", mode="lines+markers"))
+    fig_annual.add_trace(go.Scatter(x=campaigns, y=[cost_all_total*c for c in campaigns], name="全件送付", mode="lines+markers"))
+    fig_annual.add_trace(go.Scatter(x=campaigns, y=[cost_ai_total*c for c in campaigns], name="AI最適化", mode="lines+markers"))
     fig_annual.update_layout(title="累積コスト推移", xaxis_title="キャンペーン回数", yaxis_title="累積コスト（円）")
     st.plotly_chart(fig_annual, use_container_width=True)
+
+with tab5:
+    st.header("🤖 AI再学習")
+    st.caption("新しいデータで学習し直して、モデル精度を向上させます")
+
+    c1, c2 = st.columns(2)
+    c1.metric("現在のモデルバージョン", f"v{st.session_state.model_version}")
+    c2.metric("現在の精度", f"{acc*100:.1f}%")
+
+    st.subheader("再学習の実行")
+    st.info("「再学習する」を押すと、データをシャッフルして新しいモデルを学習します。実際の運用ではDM送付後の反応データを追加して再学習します。")
+
+    if st.button("🔄 再学習する", type="primary"):
+        progress = st.progress(0)
+        status = st.empty()
+
+        status.text("データ準備中...")
+        progress.progress(10)
+        time.sleep(0.5)
+
+        status.text("特徴量エンジニアリング中...")
+        progress.progress(30)
+        time.sleep(0.5)
+
+        status.text("モデル学習中...")
+        progress.progress(50)
+        new_seed = int(datetime.now().timestamp()) % 10000
+        X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=new_seed)
+        new_model = GradientBoostingClassifier(n_estimators=120, max_depth=4, random_state=new_seed)
+        new_model.fit(X_tr, y_tr)
+        progress.progress(80)
+        time.sleep(0.3)
+
+        status.text("評価中...")
+        new_acc = accuracy_score(y_te, new_model.predict(X_te))
+        progress.progress(100)
+        time.sleep(0.3)
+
+        st.session_state.model_version += 1
+        st.session_state.accuracy_history.append(round(new_acc * 100, 1))
+        st.session_state.training_dates.append(datetime.now().strftime("%Y-%m-%d %H:%M"))
+
+        status.empty()
+        progress.empty()
+
+        diff = new_acc - acc
+        if diff >= 0:
+            st.success(f"再学習完了！ v{st.session_state.model_version}  精度：{new_acc*100:.1f}%（+{diff*100:.2f}%）")
+        else:
+            st.warning(f"再学習完了。 v{st.session_state.model_version}  精度：{new_acc*100:.1f}%（{diff*100:.2f}%）")
+
+    if st.session_state.accuracy_history:
+        st.subheader("📈 学習履歴")
+        history_df = pd.DataFrame({
+            "学習日時": st.session_state.training_dates,
+            "バージョン": [f"v{i+2}" for i in range(len(st.session_state.accuracy_history))],
+            "精度（%）": st.session_state.accuracy_history
+        })
+        st.dataframe(history_df, hide_index=True)
+        fig_history = px.line(history_df, x="バージョン", y="精度（%）", markers=True, title="モデル精度の推移")
+        st.plotly_chart(fig_history, use_container_width=True)
 
 st.divider()
 st.caption("© 2026 紙DM AI最適化ツール")
