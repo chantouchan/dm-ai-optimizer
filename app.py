@@ -44,7 +44,7 @@ def generate_demo_data(n=100000):
         + (data["メルマガ開封率"] > 0.3).astype(int)
         + (data["Web訪問回数_直近30日"] > 2).astype(int)
     )
-    prob = 1 / (1 + np.exp(-0.8 * (score - 5.5)))
+    prob = 1 / (1 + np.exp(-1.2 * (score - 7.0)))
     data["DM反応フラグ"] = (np.random.random(n) < prob).astype(int)
     return data
 
