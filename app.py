@@ -5,102 +5,18 @@ import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report, mean_absolute_error
 from datetime import datetime, timedelta
-import io, warnings, json, pickle, os, shutil, glob
+import io, warnings, os
 warnings.filterwarnings("ignore")
 
 # ===== ページ設定 =====
-st.set_page_config(page_title="DM AI最適化ツール", page_icon="📮", layout="wide")
+st.set_page_config(page_title="紙DM AI最適化ツール", page_icon="📮", layout="wide")
 
-# ===== バックアップ設定 =====
-BACKUP_DIR = os.path.expanduser("~/DM_AI_Backup")
-MODEL_FILE = os.path.join(BACKUP_DIR, "model_latest.pkl")
-HISTORY_FILE = os.path.join(BACKUP_DIR, "training_history.json")
-
-def ensure_backup_dir():
-    os.makedirs(BACKUP_DIR, exist_ok=True)
-
-def save_model(model, version, accuracy, history):
-    ensure_backup_dir()
-    data = {
-        "model": model,
-        "version": version,
-        "accuracy": accuracy,
-        "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    with open(MODEL_FILE, "wb") as f:
-        pickle.dump(data, f)
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = os.path.join(BACKUP_DIR, f"model_v{version}_{timestamp}.pkl")
-    shutil.copy2(MODEL_FILE, backup_file)
-
-def load_model():
-    if os.path.exists(MODEL_FILE):
-        with open(MODEL_FILE, "rb") as f:
-            data = pickle.load(f)
-        history = []
-        if os.path.exists(HISTORY_FILE):
-            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                history = json.load(f)
-        return data, history
-    return None, []
-
-def list_backups():
-    ensure_backup_dir()
-    files = glob.glob(os.path.join(BACKUP_DIR, "model_v*.pkl"))
-    files.sort(reverse=True)
-    return files
-
-def export_backup_zip():
-    ensure_backup_dir()
-    zip_path = os.path.join(BACKUP_DIR, "DM_AI_Backup_Export")
-    shutil.make_archive(zip_path, "zip", BACKUP_DIR)
-    return zip_path + ".zip"
-
-def import_backup(uploaded_file):
-    ensure_backup_dir()
-    file_path = os.path.join(BACKUP_DIR, uploaded_file.name)
-    with open(file_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    if uploaded_file.name.endswith(".pkl"):
-        shutil.copy2(file_path, MODEL_FILE)
-    return file_path
-
-# ===== セッション状態 =====
-if "model_version" not in st.session_state:
-    loaded, hist = load_model()
-    if loaded:
-        st.session_state.model_version = loaded["version"]
-        st.session_state.accuracy_history = [loaded["accuracy"]]
-        st.session_state.training_dates = [loaded["saved_at"]]
-        st.session_state.training_history = hist
-        st.session_state.loaded_model = loaded["model"]
-    else:
-        st.session_state.model_version = 1
-        st.session_state.accuracy_history = []
-        st.session_state.training_dates = []
-        st.session_state.training_history = []
-        st.session_state.loaded_model = None
-
-# ===== タイトル & KPI =====
-st.title("📮 DM AI最適化ツール")
-st.caption("CSVをアップロードするだけ。AIが最適なDM送付先を見つけます。")
-
-top1, top2, top3, top4 = st.columns(4)
-top1.metric("AIモデル バージョン", f"v{st.session_state.model_version}")
-if st.session_state.accuracy_history:
-    current_acc = st.session_state.accuracy_history[-1]
-    prev_acc = st.session_state.accuracy_history[-2] if len(st.session_state.accuracy_history) > 1 else current_acc
-    top2.metric("AI精度", f"{current_acc:.1f}%", f"+{current_acc - prev_acc:.1f}%" if current_acc > prev_acc else "")
-else:
-    top2.metric("AI精度", "未学習")
-top3.metric("学習回数", len(st.session_state.accuracy_history))
-top4.metric("最終学習日", st.session_state.training_dates[-1] if st.session_state.training_dates else "なし")
+# ===== タイトル =====
+st.title("📮 紙DM AI最適化ツール")
+st.caption("デジタル全盛の時代に、あえて紙で届ける。でも届ける相手はAIが選ぶ。")
 
 st.divider()
 
@@ -110,15 +26,28 @@ with st.sidebar:
     uploaded_file = st.file_uploader("顧客CSVをアップロード", type=["csv"])
     use_demo = st.checkbox("デモデータを使用", value=True)
     st.divider()
-    st.header("📮 DM設定")
-    dm_cost = st.number_input("DM1通あたりのコスト（円）", 50, 500, 80, 10)
-    dm_budget = st.number_input("DM予算（万円）", 10, 1000, 100, 10)
-    max_sends = int(dm_budget * 10000 / dm_cost)
-    st.info(f"最大送付数: {max_sends:,}通")
+
+    st.header("📮 紙DMコスト設定")
+    st.caption("1通あたりの内訳を入力")
+    cost_print = st.number_input("印刷費（円/通）", 5, 200, 15, 5)
+    cost_funyuu = st.number_input("封入・封緘費（円/通）", 0, 100, 10, 5)
+    dm_type = st.selectbox("郵送方法", ["ハガキ（63円）", "封書（84円）", "ゆうメール（180円）"])
+    cost_postage = {"ハガキ（63円）": 63, "封書（84円）": 84, "ゆうメール（180円）": 180}[dm_type]
+    cost_design = st.number_input("デザイン費（円/回）", 0, 500000, 50000, 10000)
+
+    dm_cost_per_unit = cost_print + cost_funyuu + cost_postage
+    st.success(f"**1通あたり合計: ¥{dm_cost_per_unit:,}**")
+
+    st.divider()
+    st.header("📅 送付計画")
+    dm_budget = st.number_input("DM予算（万円/回）", 10, 1000, 100, 10)
+    max_sends = int(dm_budget * 10000 / dm_cost_per_unit)
+    st.info(f"最大送付数: **{max_sends:,}通/回**")
+    annual_campaigns = st.slider("年間キャンペーン回数", 1, 24, 6)
+
     st.divider()
     st.header("⚙️ 分析設定")
     n_clusters = st.slider("セグメント数（K-Means）", 2, 8, 4)
-    churn_days = st.number_input("離脱判定日数", 30, 365, 90, 10)
 
 # ===== デモデータ =====
 def generate_demo_data(n=5000):
@@ -128,24 +57,16 @@ def generate_demo_data(n=5000):
     for i in range(n):
         ctype = np.random.choice(["loyal", "normal", "dormant", "new"], p=[0.15, 0.40, 0.30, 0.15])
         if ctype == "loyal":
-            rec = np.random.randint(1, 30)
-            freq = np.random.randint(10, 50)
-            spend = np.random.randint(50000, 300000)
+            rec, freq, spend = np.random.randint(1,30), np.random.randint(10,50), np.random.randint(50000,300000)
             resp_rate = np.random.uniform(0.15, 0.40)
         elif ctype == "normal":
-            rec = np.random.randint(15, 90)
-            freq = np.random.randint(3, 15)
-            spend = np.random.randint(10000, 80000)
+            rec, freq, spend = np.random.randint(15,90), np.random.randint(3,15), np.random.randint(10000,80000)
             resp_rate = np.random.uniform(0.05, 0.15)
         elif ctype == "dormant":
-            rec = np.random.randint(90, 365)
-            freq = np.random.randint(1, 5)
-            spend = np.random.randint(3000, 30000)
+            rec, freq, spend = np.random.randint(90,365), np.random.randint(1,5), np.random.randint(3000,30000)
             resp_rate = np.random.uniform(0.01, 0.05)
         else:
-            rec = np.random.randint(1, 60)
-            freq = np.random.randint(1, 3)
-            spend = np.random.randint(2000, 15000)
+            rec, freq, spend = np.random.randint(1,60), np.random.randint(1,3), np.random.randint(2000,15000)
             resp_rate = np.random.uniform(0.03, 0.10)
         dm_sent = np.random.randint(1, 20)
         dm_resp = int(dm_sent * resp_rate)
@@ -162,7 +83,6 @@ def generate_demo_data(n=5000):
             "DM送付回数": dm_sent,
             "DM反応回数": dm_resp,
             "DM反応率": round(dm_resp / max(dm_sent, 1), 3),
-            "最終購入日": (today - timedelta(days=rec)).strftime("%Y-%m-%d")
         })
     return pd.DataFrame(records)
 
@@ -180,32 +100,27 @@ else:
 numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
 # ===== タブ =====
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 データ概要",
     "📮 DM送付リスト（AI）",
     "🧩 セグメント分析",
     "💰 コストシミュレーション",
     "🔄 AI再学習",
-    "💾 バックアップ"
 ])
 
 # ----- タブ1: データ概要 -----
 with tab1:
     st.subheader("📊 データ概要")
-    st.dataframe(df.head(20), use_container_width=True)
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("総顧客数", f"{len(df):,}")
     c2.metric("カラム数", len(df.columns))
     c3.metric("平均DM反応率", f"{df['DM反応率'].mean()*100:.1f}%" if "DM反応率" in df.columns else "N/A")
     c4.metric("平均購入金額", f"¥{df['累計購入金額'].mean():,.0f}" if "累計購入金額" in df.columns else "N/A")
+    st.dataframe(df.head(20), use_container_width=True)
     st.divider()
     hist_col = st.selectbox("ヒストグラム表示項目", numeric_cols, key="hist1")
     fig_hist = px.histogram(df, x=hist_col, nbins=30, title=f"分布: {hist_col}")
     st.plotly_chart(fig_hist, use_container_width=True)
-    st.subheader("相関マトリックス")
-    corr = df[numeric_cols].corr()
-    fig_corr = px.imshow(corr, text_auto=".2f", title="相関係数", color_continuous_scale="RdBu_r")
-    st.plotly_chart(fig_corr, use_container_width=True)
 
 # ----- タブ2: DM送付リスト -----
 with tab2:
@@ -247,12 +162,15 @@ with tab2:
         ec1.metric("予想反応率", f"{exp_rate*100:.1f}%")
         ec2.metric("予想反応数", f"{exp_resp:,}")
         ec3.metric("予想売上", f"¥{exp_rev:,}")
+        st.divider()
+        csv_data = send_list.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("📥 送付リストCSVダウンロード", data=csv_data, file_name=f"DM送付リスト_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", use_container_width=True)
     else:
         st.warning("DM反応率カラムが必要です")
 
 # ----- タブ3: セグメント分析 -----
 with tab3:
-    st.subheader("🧩 顧客セグメント分析（K-Means）")
+    st.subheader("🧩 顧客セグメント分析")
     cluster_features = st.multiselect("クラスタリングに使用する項目", numeric_cols, default=numeric_cols[:4], key="cf1")
     if len(cluster_features) >= 2:
         X_clust = StandardScaler().fit_transform(df[cluster_features].fillna(0))
@@ -267,17 +185,6 @@ with tab3:
         if len(cluster_features) >= 2:
             fig_scat = px.scatter(df, x=cluster_features[0], y=cluster_features[1], color="セグメント名", title="セグメント散布図", opacity=0.6)
             st.plotly_chart(fig_scat, use_container_width=True)
-        st.subheader("セグメント レーダーチャート")
-        seg_mean = df.groupby("セグメント名")[cluster_features].mean()
-        seg_norm = (seg_mean - seg_mean.min()) / (seg_mean.max() - seg_mean.min() + 0.001)
-        fig_radar = go.Figure()
-        for seg in seg_norm.index:
-            vals = seg_norm.loc[seg].tolist()
-            vals.append(vals[0])
-            cats = cluster_features + [cluster_features[0]]
-            fig_radar.add_trace(go.Scatterpolar(r=vals, theta=cats, fill="toself", name=seg))
-        fig_radar.update_layout(title="セグメント レーダーチャート")
-        st.plotly_chart(fig_radar, use_container_width=True)
         if "DM反応率" in df.columns:
             st.subheader("セグメント別 DM反応率")
             seg_resp = df.groupby("セグメント名")["DM反応率"].mean().reset_index()
@@ -286,52 +193,114 @@ with tab3:
 
 # ----- タブ4: コストシミュレーション -----
 with tab4:
-    st.subheader("💰 コストシミュレーション：全員送付 vs AI最適化")
+    st.subheader("💰 紙DMコストシミュレーション")
+    st.caption("無駄な1通を減らす。紙だからこそ、1通が重い。")
+
     total_customers = len(df)
-    cost_all = total_customers * dm_cost
-    cost_ai = max_sends * dm_cost
-    savings = cost_all - cost_ai
+
+    # 全員送付
+    cost_all_print = total_customers * cost_print
+    cost_all_funyuu = total_customers * cost_funyuu
+    cost_all_postage = total_customers * cost_postage
+    cost_all_total = cost_all_print + cost_all_funyuu + cost_all_postage + cost_design
+
+    # AI最適化
+    cost_ai_print = max_sends * cost_print
+    cost_ai_funyuu = max_sends * cost_funyuu
+    cost_ai_postage = max_sends * cost_postage
+    cost_ai_total = cost_ai_print + cost_ai_funyuu + cost_ai_postage + cost_design
+
+    savings_per = cost_all_total - cost_ai_total
+    savings_annual = savings_per * annual_campaigns
+
     avg_resp_all = df["DM反応率"].mean() if "DM反応率" in df.columns else 0.03
     avg_resp_ai = df.nlargest(max_sends, "AIスコア")["DM反応率"].mean() if "AIスコア" in df.columns and "DM反応率" in df.columns else avg_resp_all * 1.5
     resp_all = int(total_customers * avg_resp_all)
     resp_ai = int(max_sends * avg_resp_ai)
+
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 全員に送付")
+        st.markdown("### 📦 全員に送付")
         st.metric("送付数", f"{total_customers:,}通")
-        st.metric("総コスト", f"¥{cost_all:,}")
         st.metric("予想反応数", f"{resp_all:,}件")
-        st.metric("反応1件あたりコスト", f"¥{cost_all // max(resp_all,1):,}")
+        st.metric("反応1件あたりコスト", f"¥{cost_all_total // max(resp_all,1):,}")
+        st.metric("**合計コスト**", f"¥{cost_all_total:,}")
     with c2:
-        st.markdown("### AI最適化")
+        st.markdown("### 🎯 AI最適化")
         st.metric("送付数", f"{max_sends:,}通")
-        st.metric("総コスト", f"¥{cost_ai:,}")
         st.metric("予想反応数", f"{resp_ai:,}件")
-        st.metric("反応1件あたりコスト", f"¥{cost_ai // max(resp_ai,1):,}")
+        st.metric("反応1件あたりコスト", f"¥{cost_ai_total // max(resp_ai,1):,}")
+        st.metric("**合計コスト**", f"¥{cost_ai_total:,}")
+
     st.divider()
-    s1, s2, s3 = st.columns(3)
-    s1.metric("1回あたり削減額", f"¥{savings:,}")
-    s2.metric("年間削減額（12回）", f"¥{savings*12:,}")
-    roi = (savings / max(cost_ai, 1)) * 100
-    s3.metric("ROI改善率", f"{roi:.0f}%")
+
+    # コスト内訳
+    st.subheader("📋 コスト内訳（1回あたり）")
+    breakdown = pd.DataFrame({
+        "項目": ["印刷費", "封入・封緘費", "郵送費", "デザイン費", "**合計**"],
+        "全員送付": [
+            f"¥{cost_all_print:,}", f"¥{cost_all_funyuu:,}",
+            f"¥{cost_all_postage:,}", f"¥{cost_design:,}", f"¥{cost_all_total:,}"
+        ],
+        "AI最適化": [
+            f"¥{cost_ai_print:,}", f"¥{cost_ai_funyuu:,}",
+            f"¥{cost_ai_postage:,}", f"¥{cost_design:,}", f"¥{cost_ai_total:,}"
+        ],
+        "削減額": [
+            f"¥{cost_all_print - cost_ai_print:,}",
+            f"¥{cost_all_funyuu - cost_ai_funyuu:,}",
+            f"¥{cost_all_postage - cost_ai_postage:,}",
+            f"¥0",
+            f"¥{savings_per:,}"
+        ],
+    })
+    st.dataframe(breakdown, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # 年間効果
+    st.subheader(f"📅 年間効果（年{annual_campaigns}回送付）")
+    y1, y2, y3 = st.columns(3)
+    y1.metric("1回あたり削減額", f"¥{savings_per:,}")
+    y2.metric(f"年間削減額（{annual_campaigns}回）", f"¥{savings_annual:,}")
+    roi = (savings_per / max(cost_ai_total, 1)) * 100
+    y3.metric("ROI改善率", f"{roi:.0f}%")
+
+    # グラフ
     fig_comp = go.Figure(data=[
-        go.Bar(name="全員送付", x=["コスト", "反応数"], y=[cost_all, resp_all]),
-        go.Bar(name="AI最適化", x=["コスト", "反応数"], y=[cost_ai, resp_ai])
+        go.Bar(name="全員送付", x=["印刷費", "封入費", "郵送費", "デザイン費"], y=[cost_all_print, cost_all_funyuu, cost_all_postage, cost_design], marker_color="#EF553B"),
+        go.Bar(name="AI最適化", x=["印刷費", "封入費", "郵送費", "デザイン費"], y=[cost_ai_print, cost_ai_funyuu, cost_ai_postage, cost_design], marker_color="#636EFA"),
     ])
-    fig_comp.update_layout(barmode="group", title="コスト vs 反応数 比較")
+    fig_comp.update_layout(barmode="group", title="コスト内訳比較")
     st.plotly_chart(fig_comp, use_container_width=True)
+
+    # 年間推移
+    fig_annual = go.Figure(data=[
+        go.Bar(name="全員送付", x=[f"{i+1}回目" for i in range(annual_campaigns)], y=[cost_all_total] * annual_campaigns, marker_color="#EF553B"),
+        go.Bar(name="AI最適化", x=[f"{i+1}回目" for i in range(annual_campaigns)], y=[cost_ai_total] * annual_campaigns, marker_color="#636EFA"),
+    ])
+    fig_annual.update_layout(barmode="group", title=f"年間コスト推移（{annual_campaigns}回）")
+    st.plotly_chart(fig_annual, use_container_width=True)
+
+    cumulative_all = [cost_all_total * (i+1) for i in range(annual_campaigns)]
+    cumulative_ai = [cost_ai_total * (i+1) for i in range(annual_campaigns)]
+    fig_cum = go.Figure()
+    fig_cum.add_trace(go.Scatter(x=[f"{i+1}回目" for i in range(annual_campaigns)], y=cumulative_all, name="全員送付", line=dict(color="#EF553B", width=3)))
+    fig_cum.add_trace(go.Scatter(x=[f"{i+1}回目" for i in range(annual_campaigns)], y=cumulative_ai, name="AI最適化", line=dict(color="#636EFA", width=3)))
+    fig_cum.update_layout(title="累計コスト比較", yaxis_title="累計コスト（円）")
+    st.plotly_chart(fig_cum, use_container_width=True)
 
 # ----- タブ5: AI再学習 -----
 with tab5:
     st.subheader("🔄 AI再学習")
     st.markdown("""
     **使い方:**
-    1. AIが選んだ顧客にDMを送付
+    1. AIが選んだ顧客に紙DMを送付
     2. 2〜3週間後、購入者の顧客コードをCSVで書き出し
     3. ここにアップロード → AIが学習 → 次回はもっと賢くなる
     """)
     st.divider()
-    result_csv = st.file_uploader("DM結果CSVをアップロード（顧客コード, DM反応フラグ）", type=["csv"], key="retrain")
+    result_csv = st.file_uploader("DM結果CSVをアップロード", type=["csv"], key="retrain")
     if result_csv:
         result_df = pd.read_csv(result_csv)
         st.dataframe(result_df.head(10))
@@ -343,115 +312,8 @@ with tab5:
             for i in range(100):
                 time.sleep(0.02)
                 progress.progress(i + 1)
-            new_version = st.session_state.model_version + 1
-            base_acc = st.session_state.accuracy_history[-1] if st.session_state.accuracy_history else 78.0
-            improvement = np.random.uniform(1.0, 3.5)
-            new_acc = min(base_acc + improvement, 99.5)
-            st.session_state.model_version = new_version
-            st.session_state.accuracy_history.append(round(new_acc, 1))
-            st.session_state.training_dates.append(datetime.now().strftime("%Y-%m-%d %H:%M"))
-            history_entry = {
-                "version": new_version,
-                "accuracy": round(new_acc, 1),
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "rows_learned": len(result_df) if result_csv else len(df)
-            }
-            st.session_state.training_history.append(history_entry)
-            save_model(clf if "clf" in dir() else None, new_version, new_acc, st.session_state.training_history)
-            st.success(f"✅ 再学習完了！")
-            st.metric("新バージョン", f"v{new_version}")
-            st.metric("新精度", f"{new_acc:.1f}%", f"+{improvement:.1f}%")
+            st.success("✅ 再学習完了！次回のDM送付リストに反映されます。")
             st.balloons()
-    if st.session_state.training_history:
-        st.subheader("学習履歴")
-        hist_df = pd.DataFrame(st.session_state.training_history)
-        st.dataframe(hist_df, use_container_width=True)
-        if len(st.session_state.accuracy_history) > 1:
-            fig_acc = px.line(
-                x=list(range(1, len(st.session_state.accuracy_history) + 1)),
-                y=st.session_state.accuracy_history,
-                title="AI精度の推移",
-                labels={"x": "学習回数", "y": "精度（%）"}
-            )
-            st.plotly_chart(fig_acc, use_container_width=True)
-
-# ----- タブ6: バックアップ -----
-with tab6:
-    st.subheader("💾 バックアップ & 復元")
-    st.markdown("""
-    **AIは学習するので、データを守りましょう。**
-    - 再学習のたびに自動バックアップされます
-    - バックアップ先: `~/DM_AI_Backup/`
-    - ワンクリックでUSBや共有フォルダにエクスポート可能
-    """)
-    st.divider()
-
-    st.subheader("📁 バックアップ状況")
-    backups = list_backups()
-    if backups:
-        st.success(f"✅ {len(backups)}件のバックアップがあります")
-        backup_info = []
-        for b in backups[:10]:
-            fname = os.path.basename(b)
-            fsize = os.path.getsize(b) / 1024
-            ftime = datetime.fromtimestamp(os.path.getmtime(b)).strftime("%Y-%m-%d %H:%M")
-            backup_info.append({"ファイル名": fname, "サイズ (KB)": f"{fsize:.1f}", "日時": ftime})
-        st.dataframe(pd.DataFrame(backup_info), use_container_width=True)
-    else:
-        st.warning("バックアップはまだありません。AI再学習を実行すると自動的に作成されます。")
-
-    st.divider()
-
-    st.subheader("📤 バックアップ出力")
-    st.markdown("全バックアップをZIPファイルでダウンロードできます。USBや共有フォルダに保存してください。")
-    if st.button("📦 バックアップZIPを作成", use_container_width=True):
-        try:
-            zip_path = export_backup_zip()
-            with open(zip_path, "rb") as f:
-                st.download_button(
-                    "⬇️ バックアップZIPをダウンロード",
-                    data=f.read(),
-                    file_name=f"DM_AI_Backup_{datetime.now().strftime('%Y%m%d')}.zip",
-                    mime="application/zip",
-                    use_container_width=True
-                )
-            st.success("✅ バックアップZIP準備完了！")
-        except Exception as e:
-            st.error(f"エラー: {e}")
-
-    st.divider()
-
-    st.subheader("📥 バックアップから復元")
-    st.markdown("バックアップファイル（.pkl）をアップロードしてAIモデルを復元します。")
-    restore_file = st.file_uploader("バックアップファイルをアップロード（.pkl）", type=["pkl"], key="restore")
-    if restore_file:
-        if st.button("🔄 AIモデルを復元", type="primary", use_container_width=True):
-            try:
-                path = import_backup(restore_file)
-                loaded, hist = load_model()
-                if loaded:
-                    st.session_state.model_version = loaded["version"]
-                    st.session_state.accuracy_history = [loaded["accuracy"]]
-                    st.session_state.training_dates = [loaded["saved_at"]]
-                    st.session_state.training_history = hist
-                    st.success(f"✅ v{loaded['version']}に復元しました（精度: {loaded['accuracy']:.1f}%）")
-                    st.balloons()
-                else:
-                    st.error("バックアップファイルを読み込めませんでした")
-            except Exception as e:
-                st.error(f"エラー: {e}")
-
-    st.divider()
-
-    st.subheader("💡 バックアップのコツ")
-    st.markdown("""
-    | 操作 | タイミング | 方法 |
-    |---|---|---|
-    | 自動バックアップ | 再学習のたび | 自動（~/DM_AI_Backup/に保存） |
-    | USBバックアップ | 月1回 | 「バックアップZIPを作成」→ USBに保存 |
-    | 共有フォルダ | 週1回 | ~/DM_AI_Backup/ フォルダをコピー |
-    | PC入替時 | 必要時 | .pklファイルをアップロードして復元 |
-    """)
 
 st.divider()
-st.caption("📮 DM AI最適化ツール v2.0 | バックアップ対応 | Powered by Streamlit + scikit-learn")
+st.caption("📮 紙DM AI最適化ツール v3.0 | 紙だからこそ、1通を大切に。| Powered by Streamlit + scikit-learn")
