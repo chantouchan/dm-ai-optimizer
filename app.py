@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="紙DM AI最適化ツール", page_icon="📮", layout="wide")
 st.title("📮 紙DM AI最適化ツール")
-st.caption("デジタル全盛の時代に、あえて紙で届ける。でも届ける相手はAIが選ぶ。")
+st.caption("RFM分析だけでは見つけられない"隠れた見込み顧客"をAIが発掘します。")
 
 # === セッション状態 ===
 if "model_version" not in st.session_state:
