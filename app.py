@@ -13,7 +13,7 @@ import io, warnings, json, pickle, os, shutil, glob
 warnings.filterwarnings("ignore")
 
 # ===== Page Config =====
-st.set_page_config(page_title="紙DM AI最適化ツール", page_icon="📮", layout="wide")
+st.set_page_config(page_title="DM AI Optimizer", page_icon="📮", layout="wide")
 
 # ===== Backup Directory =====
 BACKUP_DIR = os.path.expanduser("~/DM_AI_Backup")
@@ -79,37 +79,37 @@ if "model_version" not in st.session_state:
         st.session_state.loaded_model = None
 
 # ===== Title & Top Metrics =====
-st.title("📮 紙DM AI最適化ツール")
-st.caption("RFM分析だけでは見つけられない隠れた見込み顧客をAIが発掘します。")
+st.title("📮 DM AI Optimizer")
+st.caption("Upload CSV. AI finds the best DM targets. No internet needed.")
 
 top1, top2, top3, top4 = st.columns(4)
-top1.metric("AIモデル", f"v{st.session_state.model_version}")
+top1.metric("AI Model Version", f"v{st.session_state.model_version}")
 if st.session_state.accuracy_history:
     current_acc = st.session_state.accuracy_history[-1]
     prev_acc = st.session_state.accuracy_history[-2] if len(st.session_state.accuracy_history) > 1 else current_acc
-    top2.metric("AI精度", f"{current_acc:.1f}%", f"+{current_acc - prev_acc:.1f}%" if current_acc > prev_acc else "")
+    top2.metric("AI Accuracy", f"{current_acc:.1f}%", f"+{current_acc - prev_acc:.1f}%" if current_acc > prev_acc else "")
 else:
-    top2.metric("AI精度", "未学習")
-top3.metric("学習回数", len(st.session_state.accuracy_history))
-top4.metric("最終学習日", st.session_state.training_dates[-1] if st.session_state.training_dates else "なし")
+    top2.metric("AI Accuracy", "Not trained")
+top3.metric("Training Count", len(st.session_state.accuracy_history))
+top4.metric("Last Training", st.session_state.training_dates[-1] if st.session_state.training_dates else "None")
 
 st.divider()
 
 # ===== Sidebar =====
 with st.sidebar:
-    st.header("📂 データ入力")
-    uploaded_file = st.file_uploader("顧客CSVアップロード", type=["csv"])
-    use_demo = st.checkbox("デモデータ使用", value=True)
+    st.header("📂 Data Input")
+    uploaded_file = st.file_uploader("Upload Customer CSV", type=["csv"])
+    use_demo = st.checkbox("Use Demo Data", value=True)
     st.divider()
-    st.header("📮 DM設定")
-    dm_cost = st.number_input("1通コスト（円）", 50, 500, 80, 10)
-    dm_budget = st.number_input("DM予算（万円）", 10, 10000, 700, 10)
+    st.header("📮 DM Settings")
+    dm_cost = st.number_input("Cost per DM (JPY)", 50, 500, 80, 10)
+    dm_budget = st.number_input("DM Budget (x 10,000 JPY)", 10, 10000, 700, 10)
     max_sends = int(dm_budget * 10000 / dm_cost)
     st.info(f"Max sends: {max_sends:,}")
     st.divider()
-    st.header("⚙️ 分析設定")
-    n_clusters = st.slider("セグメント数", 2, 8, 4)
-    churn_days = st.number_input("離脱判定日数", 30, 365, 90, 10)
+    st.header("⚙️ Analysis Settings")
+    n_clusters = st.slider("Segments (K-Means)", 2, 8, 4)
+    churn_days = st.number_input("Churn Threshold (days)", 30, 365, 90, 10)
 
 # ===== Demo Data =====
 def generate_demo_data(n=50000):
@@ -172,35 +172,35 @@ numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
 # ===== Tabs =====
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    "📊 データ概要",
-    "📮 AI DM送付リスト",
-    "🧩 セグメント分析",
-    "💰 コストシミュレーション",
-    "🔄 AI再学習",
-    "💾 バックアップ"
+    "📊 Data Overview",
+    "📮 DM Send List (AI)",
+    "🧩 Segment Analysis",
+    "💰 Cost Simulation",
+    "🔄 AI Re-training",
+    "💾 Backup & Restore"
 ])
 
 # ----- Tab 1: Data Overview -----
 with tab1:
-    st.subheader("📊 データ概要")
+    st.subheader("📊 Data Overview")
     st.dataframe(df.head(20), use_container_width=True)
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("総顧客数", f"{len(df):,}")
-    c2.metric("カラム数", len(df.columns))
-    c3.metric("平均DM反応率", f"{df['DM_Response_Rate'].mean()*100:.1f}%" if "DM_Response_Rate" in df.columns else "N/A")
-    c4.metric("平均購入額", f"¥{df['Total_Spend'].mean():,.0f}" if "Total_Spend" in df.columns else "N/A")
+    c1.metric("Total Customers", f"{len(df):,}")
+    c2.metric("Columns", len(df.columns))
+    c3.metric("Avg DM Response", f"{df['DM_Response_Rate'].mean()*100:.1f}%" if "DM_Response_Rate" in df.columns else "N/A")
+    c4.metric("Avg Spend", f"¥{df['Total_Spend'].mean():,.0f}" if "Total_Spend" in df.columns else "N/A")
     st.divider()
-    hist_col = st.selectbox("表示項目", numeric_cols, key="hist1")
+    hist_col = st.selectbox("Histogram Column", numeric_cols, key="hist1")
     fig_hist = px.histogram(df, x=hist_col, nbins=30, title=f"Distribution: {hist_col}")
     st.plotly_chart(fig_hist, use_container_width=True)
-    st.subheader("相関マトリクス")
+    st.subheader("Correlation Matrix")
     corr = df[numeric_cols].corr()
-    fig_corr = px.imshow(corr, text_auto=".2f", title="相関", color_continuous_scale="RdBu_r")
+    fig_corr = px.imshow(corr, text_auto=".2f", title="Correlation", color_continuous_scale="RdBu_r")
     st.plotly_chart(fig_corr, use_container_width=True)
 
 # ----- Tab 2: DM Send List -----
 with tab2:
-    st.subheader("📮 AI DM送付リスト")
+    st.subheader("📮 AI-Optimized DM Send List")
     if "DM_Response_Rate" in df.columns:
         df["DM_Response_Flag"] = (df["DM_Response_Rate"] > df["DM_Response_Rate"].median()).astype(int)
         feature_cols = [c for c in numeric_cols if c not in ["DM_Response_Flag", "DM_Response_Rate", "DM_Response_Count"]]
@@ -217,20 +217,20 @@ with tab2:
             st.session_state.training_dates.append(datetime.now().strftime("%Y-%m-%d %H:%M"))
 
         c1, c2 = st.columns(2)
-        c1.metric("学習精度", f"{train_acc:.1f}%")
-        c2.metric("テスト精度", f"{test_acc:.1f}%")
+        c1.metric("Train Accuracy", f"{train_acc:.1f}%")
+        c2.metric("Test Accuracy", f"{test_acc:.1f}%")
         df["AI_Score"] = clf.predict_proba(X)[:, 1]
-        df["AI_Rank"] = pd.cut(df["AI_Score"], bins=[0, 0.05, 0.15, 1.0], labels=["C: 除外", "B: 検討", "A: 送付"])
+        df["AI_Rank"] = pd.cut(df["AI_Score"], bins=[0, 0.05, 0.15, 1.0], labels=["C: Skip", "B: Maybe", "A: Send"])
         st.divider()
         rc1, rc2, rc3 = st.columns(3)
-        rc1.metric("A: 送付", f"{(df['AI_Rank']=='A: Send').sum():,}")
-        rc2.metric("B: 検討", f"{(df['AI_Rank']=='B: Maybe').sum():,}")
-        rc3.metric("C: 除外", f"{(df['AI_Rank']=='C: Skip').sum():,}")
-        fig_rank = px.pie(df, names="AI_Rank", title="AIランク分布")
+        rc1.metric("A: Send", f"{(df['AI_Rank']=='A: Send').sum():,}")
+        rc2.metric("B: Maybe", f"{(df['AI_Rank']=='B: Maybe').sum():,}")
+        rc3.metric("C: Skip", f"{(df['AI_Rank']=='C: Skip').sum():,}")
+        fig_rank = px.pie(df, names="AI_Rank", title="AI Rank Distribution")
         st.plotly_chart(fig_rank, use_container_width=True)
-        st.subheader("特徴量重要度 Top10")
+        st.subheader("Feature Importance (Top 10)")
         imp = pd.DataFrame({"Feature": feature_cols, "Importance": clf.feature_importances_}).nlargest(10, "Importance")
-        fig_imp = px.bar(imp, x="Importance", y="Feature", orientation="h", title="重要度 Top10")
+        fig_imp = px.bar(imp, x="Importance", y="Feature", orientation="h", title="Top 10 Features")
         st.plotly_chart(fig_imp, use_container_width=True)
         st.subheader(f"DM Send List (Top {max_sends:,})")
         send_list = df.nlargest(max_sends, "AI_Score")[["Customer_Code", "AI_Score", "AI_Rank", "Total_Spend", "Total_Orders", "Days_Since_Last_Purchase"]]
@@ -240,28 +240,28 @@ with tab2:
         avg_spend = df["Total_Spend"].mean() if "Total_Spend" in df.columns else 10000
         exp_rev = int(exp_resp * avg_spend * 0.3)
         ec1, ec2, ec3 = st.columns(3)
-        ec1.metric("予測反応率", f"{exp_rate*100:.1f}%")
-        ec2.metric("予測反応数", f"{exp_resp:,}")
-        ec3.metric("予測売上", f"¥{exp_rev:,}")
+        ec1.metric("Expected Response Rate", f"{exp_rate*100:.1f}%")
+        ec2.metric("Expected Responses", f"{exp_resp:,}")
+        ec3.metric("Expected Revenue", f"¥{exp_rev:,}")
     else:
-        st.warning("DM_Response_Rate列が必要です")
+        st.warning("Need DM_Response_Rate column")
 
 # ----- Tab 3: Segment Analysis -----
 with tab3:
-    st.subheader("🧩 セグメント分析")
-    cluster_features = st.multiselect("特徴量を選択", numeric_cols, default=numeric_cols[:4], key="cf1")
+    st.subheader("🧩 Customer Segments (K-Means)")
+    cluster_features = st.multiselect("Select features for clustering", numeric_cols, default=numeric_cols[:4], key="cf1")
     if len(cluster_features) >= 2:
         X_clust = StandardScaler().fit_transform(df[cluster_features].fillna(0))
         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
         df["Segment"] = kmeans.fit_predict(X_clust)
         df["Segment_Label"] = df["Segment"].apply(lambda x: f"Segment {x+1}")
-        fig_seg = px.pie(df, names="Segment_Label", title="セグメント構成")
+        fig_seg = px.pie(df, names="Segment_Label", title="Segment Mix")
         st.plotly_chart(fig_seg, use_container_width=True)
-        st.subheader("セグメント概要")
+        st.subheader("Segment Summary")
         seg_summary = df.groupby("Segment_Label")[cluster_features].mean().round(1)
         st.dataframe(seg_summary, use_container_width=True)
         if len(cluster_features) >= 2:
-            fig_scat = px.scatter(df, x=cluster_features[0], y=cluster_features[1], color="Segment_Label", title="散布図", opacity=0.6)
+            fig_scat = px.scatter(df, x=cluster_features[0], y=cluster_features[1], color="Segment_Label", title="Segment Scatter", opacity=0.6)
             st.plotly_chart(fig_scat, use_container_width=True)
         st.subheader("Segment Radar")
         seg_mean = df.groupby("Segment_Label")[cluster_features].mean()
@@ -272,12 +272,12 @@ with tab3:
             vals.append(vals[0])
             cats = cluster_features + [cluster_features[0]]
             fig_radar.add_trace(go.Scatterpolar(r=vals, theta=cats, fill="toself", name=seg))
-        fig_radar.update_layout(title="レーダーチャート")
+        fig_radar.update_layout(title="Segment Radar Chart")
         st.plotly_chart(fig_radar, use_container_width=True)
         if "DM_Response_Rate" in df.columns:
-            st.subheader("セグメント別反応率")
+            st.subheader("DM Response Rate by Segment")
             seg_resp = df.groupby("Segment_Label")["DM_Response_Rate"].mean().reset_index()
-            fig_sr = px.bar(seg_resp, x="Segment_Label", y="DM_Response_Rate", title="セグメント別平均反応率")
+            fig_sr = px.bar(seg_resp, x="Segment_Label", y="DM_Response_Rate", title="Avg DM Response by Segment")
             st.plotly_chart(fig_sr, use_container_width=True)
 
 # ----- Tab 4: Cost Simulation (Realistic Version) -----
@@ -290,7 +290,7 @@ with tab4:
     with sim_col1:
         total_customers = st.number_input("Total DM Target Customers", 1000, 1000000, len(df), 1000)
         current_response_rate = st.number_input("Current Response Rate (%)", 0.5, 20.0, 3.0, 0.1)
-        cost_per_dm = st.number_input("1通コスト（円）", 10, 500, dm_cost, 10)
+        cost_per_dm = st.number_input("Cost per DM (JPY)", 10, 500, dm_cost, 10)
     with sim_col2:
         ai_cut_rate = st.slider("AI Reduction Rate (%)", 5, 30, 13, 1)
         ai_response_boost = st.slider("AI Response Rate Improvement (pt)", 0.1, 3.0, 0.5, 0.1)
@@ -319,7 +319,7 @@ with tab4:
         st.markdown("### 📬 Send to ALL")
         st.metric("Send Count", f"{send_all:,}")
         st.metric("Response Rate", f"{current_response_rate:.1f}%")
-        st.metric("予測反応数", f"{resp_all:,}")
+        st.metric("Expected Responses", f"{resp_all:,}")
         st.metric("Total Cost", f"¥{cost_all:,}")
         st.metric("Cost per Response", f"¥{cost_per_resp_all:,.0f}")
     with c2:
@@ -327,7 +327,7 @@ with tab4:
         st.metric("Send Count", f"{send_ai:,}", f"-{ai_cut_rate}%")
         st.metric("Response Rate", f"{current_response_rate + ai_response_boost:.1f}%", f"+{ai_response_boost:.1f}pt")
         resp_diff = resp_ai - resp_all
-        st.metric("予測反応数", f"{resp_ai:,}", f"+{resp_diff:,}" if resp_diff >= 0 else f"{resp_diff:,}")
+        st.metric("Expected Responses", f"{resp_ai:,}", f"+{resp_diff:,}" if resp_diff >= 0 else f"{resp_diff:,}")
         st.metric("Total Cost", f"¥{cost_ai:,}", f"-¥{cost_all - cost_ai:,}")
         cost_resp_diff = cost_per_resp_ai - cost_per_resp_all
         st.metric("Cost per Response", f"¥{cost_per_resp_ai:,.0f}", f"¥{cost_resp_diff:,.0f}")
@@ -382,7 +382,7 @@ with tab4:
 
 # ----- Tab 5: AI Re-training -----
 with tab5:
-    st.subheader("🔄 AI再学習")
+    st.subheader("🔄 AI Re-training")
     st.markdown("""
     **How it works:**
     1. Send DM to AI-selected customers
@@ -436,7 +436,7 @@ with tab5:
 
 # ----- Tab 6: Backup & Restore -----
 with tab6:
-    st.subheader("💾 バックアップ")
+    st.subheader("💾 Backup & Restore")
     st.markdown("""
     **AI learns, so protect it.**
     - Auto-backup runs every time you re-train
@@ -508,4 +508,4 @@ with tab6:
     """)
 
 st.divider()
-st.caption("📮 紙DM AI最適化ツール v2.5")
+st.caption("📮 DM AI Optimizer v2.1 | Realistic Cost Simulation | Powered by Streamlit + scikit-learn")
